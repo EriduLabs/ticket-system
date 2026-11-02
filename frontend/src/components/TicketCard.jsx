@@ -1,5 +1,6 @@
 import React from 'react';
 import QRCode from 'react-qr-code';
+import axios from 'axios';
 
 const TicketCard = ({ ticket, allocation }) => {
   const bgImage = allocation.background_image_url || 'https://images.unsplash.com/photo-1540039155733-d7fbc999e347?auto=format&fit=crop&q=80&w=1000';
@@ -17,7 +18,7 @@ const TicketCard = ({ ticket, allocation }) => {
   const ticketId = ticket?.id || '00000000-0000-0000-0000-000000000000';
   const shortId = ticketId.substring(0, 8).toUpperCase();
 
-  const handleWalletClick = (walletName) => {
+  const handleWalletClick = async (walletName) => {
     if (walletName === 'Apple Wallet') {
       // Simulate downloading a .pkpass file
       const element = document.createElement("a");
@@ -28,8 +29,15 @@ const TicketCard = ({ ticket, allocation }) => {
       element.click();
       document.body.removeChild(element);
     } else if (walletName === 'Google Wallet') {
-      // Simulate redirecting to Google Pay save URL
-      window.open(`https://pay.google.com/gp/v/save/mock-jwt-token-for-${ticketId}`, '_blank');
+      try {
+        // Fetch the REAL Google Wallet JWT from our Django backend
+        const res = await axios.get(`${window.location.protocol}//${window.location.hostname}:8000/api/tickets/${ticketId}/google-wallet/`);
+        // Open the official Google Pay save URL with our generated JWT payload
+        window.open(res.data.save_url, '_blank');
+      } catch (err) {
+        console.error(err);
+        alert('Failed to generate Google Wallet pass.');
+      }
     } else if (walletName === 'Samsung Wallet') {
       // Simulate redirecting to Samsung Wallet API
       window.open(`https://api.wallet.samsung.com/v1/mock-pass/${ticketId}`, '_blank');

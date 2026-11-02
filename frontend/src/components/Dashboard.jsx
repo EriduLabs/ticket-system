@@ -26,11 +26,17 @@ const Dashboard = () => {
   const handleCashSale = async (id) => {
     const amount = prompt('How many cash tickets to record?', '1');
     if (amount && !isNaN(amount)) {
+      const email = prompt('Enter fan email to send digital receipt & ticket (optional):', '');
       try {
-        await axios.post(`${window.location.protocol}//${window.location.hostname}:8000/api/allocations/${id}/cash-sale/`, { amount });
+        await axios.post(`${window.location.protocol}//${window.location.hostname}:8000/api/allocations/${id}/cash-sale/`, { 
+          amount, 
+          email: email || null 
+        });
         fetchAllocations();
+        if (email) alert(`Success! Logged sale and emailed ticket to ${email}`);
       } catch (err) {
         console.error(err);
+        alert('Failed to log sale.');
       }
     }
   };

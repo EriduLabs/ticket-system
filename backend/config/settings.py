@@ -63,3 +63,19 @@ USE_TZ = True
 STATIC_URL = 'static/'
 CORS_ALLOW_ALL_ORIGINS = True
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# Email Configuration
+MAILERS = {
+    "default": {
+        "BACKEND": "django.core.mail.backends.smtp.EmailBackend",
+        "HOST": "smtp.gmail.com",
+        "PORT": 587,
+        "USE_TLS": True,
+        "USER": "your-email@gmail.com",  # <--- REPLACE THIS
+        "PASSWORD": "your-app-password", # <--- REPLACE THIS
+    }
+}
+
+# Google Wallet integration
+GOOGLE_WALLET_ISSUER_ID = '3333000000000000000'
+GOOGLE_WALLET_SERVICE_ACCOUNT_EMAIL = 'mock-service-account@gserviceaccount.com'

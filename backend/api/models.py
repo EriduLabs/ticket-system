@@ -47,6 +47,7 @@ class Ticket(models.Model):
     allocation = models.ForeignKey(ArtistEventAllocation, on_delete=models.CASCADE, related_name='tickets')
     ticket_type = models.CharField(max_length=10, choices=TICKET_TYPES, default='DIGITAL')
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='VALID')
+    buyer_email = models.EmailField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
