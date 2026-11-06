@@ -9,6 +9,7 @@ const ArtistPage = () => {
   const [allocation, setAllocation] = useState(null);
   const [loading, setLoading] = useState(true);
   const [purchaseStatus, setPurchaseStatus] = useState('');
+  const [buyerEmail, setBuyerEmail] = useState('');
   const [tickets, setTickets] = useState([]);
 
   useEffect(() => {
@@ -17,7 +18,7 @@ const ArtistPage = () => {
 
   const fetchAllocation = async () => {
     try {
-      const res = await axios.get(`${window.location.protocol}//${window.location.hostname}:8000/api/landing/${slug}/`);
+      const res = await axios.get(`/api/landing/${slug}/`);
       setAllocation(res.data);
       setLoading(false);
     } catch (err) {
@@ -29,9 +30,17 @@ const ArtistPage = () => {
   const handleBuyTicket = async () => {
     setPurchaseStatus('Processing encrypted payment...');
     try {
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      const response = await axios.post(`${window.location.protocol}//${window.location.hostname}:8000/api/allocations/${allocation.id}/digital-sale/`, { amount: 1 });
-      setPurchaseStatus('Success! Your eWallet pass is ready.');
+      await new Promise(resolve => setTimeout(resolve, 800));
+      const response = await axios.post(
+        `/api/allocations/${allocation.id}/digital-sale/`,
+        { amount: 1, email: buyerEmail || null }
+      );
+      const emailSent = response.data.email_status?.sent;
+      setPurchaseStatus(
+        emailSent
+          ? `Success! Pass ready & confirmation emailed to ${buyerEmail}.`
+          : 'Success! Your eWallet pass is ready below.'
+      );
       setTickets(response.data.tickets);
       fetchAllocation();
     } catch (err) {
@@ -55,6 +64,24 @@ const ArtistPage = () => {
         <motion.div className="ticket-box glass-card" initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ delay: 0.3 }}>
           <h3>{allocation.custom_message || 'General Admission'}</h3>
           <p className="price-tag">$20.00</p>
+          <div style={{ marginBottom: '12px' }}>
+            <input
+              type="email"
+              placeholder="Enter email for ticket receipt (optional)"
+              value={buyerEmail}
+              onChange={(e) => setBuyerEmail(e.target.value)}
+              style={{
+                width: '100%',
+                maxWidth: '300px',
+                padding: '10px 14px',
+                borderRadius: '8px',
+                border: '1px solid rgba(255,255,255,0.2)',
+                background: 'rgba(0,0,0,0.4)',
+                color: '#fff',
+                fontSize: '0.9rem',
+              }}
+            />
+          </div>
           <button onClick={handleBuyTicket} className="btn-buy glow-pink">
             Purchase Digital Ticket
           </button>
