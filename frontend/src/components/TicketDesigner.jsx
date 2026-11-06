@@ -18,7 +18,8 @@ const TicketDesigner = () => {
     status: 'VALID',
   });
   const [issuedTickets, setIssuedTickets] = useState([]);
-  const [testEmail, setTestEmail] = useState('justin@eridulabs.org');
+  const [testEmail, setTestEmail] = useState('');
+  const [ticketAmount, setTicketAmount] = useState(1);
   const [mintStatus, setMintStatus] = useState('');
 
   useEffect(() => {
@@ -130,12 +131,17 @@ const TicketDesigner = () => {
   };
 
   const handleCreateTestTicket = async () => {
-    setMintStatus('Saving design & generating real ticket...');
+    const cleanEmail = testEmail.trim();
+    setMintStatus(
+      cleanEmail
+        ? `Saving design, creating ticket(s), and emailing pass to ${cleanEmail}...`
+        : 'Saving design & generating real ticket...'
+    );
     try {
       await handleSave();
       const res = await axios.post(
         `/api/allocations/${allocation.id}/digital-sale/`,
-        { amount: 1, email: testEmail || null }
+        { amount: Number(ticketAmount) || 1, email: cleanEmail || null }
       );
       const newTicket = res.data.tickets?.[0];
       if (newTicket) {
@@ -144,8 +150,10 @@ const TicketDesigner = () => {
         const sent = res.data.email_status?.sent;
         setMintStatus(
           sent
-            ? `Created Ticket #${newTicket.id.substring(0, 8).toUpperCase()} & emailed pass to ${testEmail}!`
-            : `Created Ticket #${newTicket.id.substring(0, 8).toUpperCase()}! Use the card on the right to scan for Google Wallet or check in.`
+            ? `✅ Created ${res.data.tickets.length} ticket(s) (#${newTicket.id.substring(0, 8).toUpperCase()}) & emailed Google Wallet pass to ${cleanEmail}!`
+            : cleanEmail
+            ? `Created Ticket #${newTicket.id.substring(0, 8).toUpperCase()}, but email failed: ${res.data.email_status?.reason || 'unknown error'}`
+            : `✅ Created Ticket #${newTicket.id.substring(0, 8).toUpperCase()}! Enter an email above to send it, or scan the QR on the right.`
         );
       }
     } catch (err) {
@@ -155,19 +163,25 @@ const TicketDesigner = () => {
   };
 
   const handleSendActiveTicketEmail = async () => {
+    const cleanEmail = (testEmail || activeTicket?.buyer_email || '').trim();
+    if (!cleanEmail) {
+      setMintStatus('Please enter a recipient email address first.');
+      return;
+    }
     if (!activeTicket || activeTicket.id === 'preview-uuid-000') {
       return handleCreateTestTicket();
     }
-    setMintStatus(`Sending Ticket #${activeTicket.id.substring(0, 8).toUpperCase()} to ${testEmail || 'justin@eridulabs.org'}...`);
+    setMintStatus(`Sending Ticket #${activeTicket.id.substring(0, 8).toUpperCase()} to ${cleanEmail}...`);
     try {
       const res = await axios.post(
         `/api/tickets/${activeTicket.id}/send-email/`,
-        { email: testEmail || 'justin@eridulabs.org' }
+        { email: cleanEmail }
       );
-      setMintStatus(res.data.message);
+      await fetchIssuedTickets();
+      setMintStatus(`✅ ${res.data.message}`);
     } catch (err) {
       console.error(err);
-      setMintStatus(err.response?.data?.message || 'Failed to send ticket email.');
+      setMintStatus(err.response?.data?.message || err.response?.data?.error || 'Failed to send ticket email.');
     }
   };
 
@@ -271,14 +285,26 @@ const TicketDesigner = () => {
           <p style={{ fontSize: '0.85rem', opacity: 0.8, marginBottom: '10px' }}>
             Mint a real ticket in the database so you can scan its Google Wallet QR code onto your phone and test checking it in at the venue door.
           </p>
-          <div className="form-group">
-            <label>Fan Email (optional)</label>
-            <input
-              type="email"
-              placeholder="fan@example.com"
-              value={testEmail}
-              onChange={(e) => setTestEmail(e.target.value)}
-            />
+          <div className="form-row">
+            <div className="form-group" style={{ flex: 2 }}>
+              <label>Recipient Email Address (to receive ticket &amp; Google Wallet link)</label>
+              <input
+                type="email"
+                placeholder="Enter recipient email (e.g. fan@example.com)"
+                value={testEmail}
+                onChange={(e) => setTestEmail(e.target.value)}
+              />
+            </div>
+            <div className="form-group" style={{ flex: 1, maxWidth: '110px' }}>
+              <label>Qty</label>
+              <input
+                type="number"
+                min="1"
+                max="20"
+                value={ticketAmount}
+                onChange={(e) => setTicketAmount(e.target.value)}
+              />
+            </div>
           </div>
           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
             <button
@@ -295,7 +321,7 @@ const TicketDesigner = () => {
               className="btn-primary glow-green"
               style={{ flex: 1 }}
             >
-              ✉ Resend Active Ticket to Email
+              ✉ Email Active Ticket
             </button>
           </div>
           {mintStatus && <p className="status-msg" style={{ marginTop: '8px', color: '#80d8ff' }}>{mintStatus}</p>}

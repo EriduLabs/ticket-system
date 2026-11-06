@@ -19,6 +19,8 @@ const Dashboard = () => {
     custom_message: 'General Admission',
     theme_color: '#1a1a1a',
     background_image_url: '',
+    recipient_email: '',
+    ticket_amount: 1,
   });
 
   useEffect(() => {
@@ -65,6 +67,9 @@ const Dashboard = () => {
         `/api/allocations/create-event/`,
         payload
       );
+      if (res.data.email_status?.sent) {
+        alert(`Event created and ticket pass emailed to ${newEvent.recipient_email}!`);
+      }
       setShowCreateForm(false);
       await fetchAllocations();
       navigate(`/design/${res.data.id}`);
@@ -191,9 +196,30 @@ const Dashboard = () => {
                 onChange={(e) => setNewEvent({ ...newEvent, theme_color: e.target.value })}
               />
             </div>
+            <div className="form-group">
+              <label>Email to Receive First Ticket (optional)</label>
+              <input
+                type="email"
+                placeholder="fan@example.com"
+                value={newEvent.recipient_email}
+                onChange={(e) => setNewEvent({ ...newEvent, recipient_email: e.target.value })}
+              />
+            </div>
+            <div className="form-group">
+              <label>Tickets to Email Now</label>
+              <input
+                type="number"
+                min="1"
+                max="20"
+                value={newEvent.ticket_amount}
+                onChange={(e) => setNewEvent({ ...newEvent, ticket_amount: e.target.value })}
+              />
+            </div>
           </div>
           <button type="submit" className="btn-primary glow-blue" style={{ marginTop: '12px' }}>
-            Create Show &amp; Open Ticket Studio &rarr;
+            {newEvent.recipient_email
+              ? 'Create Show, Email Ticket Pass & Open Studio →'
+              : 'Create Show & Open Ticket Studio →'}
           </button>
         </motion.form>
       )}

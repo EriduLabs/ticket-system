@@ -8,11 +8,16 @@ const TicketCard = ({ ticket, allocation, onTicketUpdated }) => {
   const [loadingWallet, setLoadingWallet] = useState(false);
   const [ticketStatus, setTicketStatus] = useState(ticket?.status || 'VALID');
   const [checkingIn, setCheckingIn] = useState(false);
+  const [cardEmail, setCardEmail] = useState(ticket?.buyer_email || '');
+  const [sendingCardEmail, setSendingCardEmail] = useState(false);
+  const [cardEmailMsg, setCardEmailMsg] = useState('');
 
   React.useEffect(() => {
     setTicketStatus(ticket?.status || 'VALID');
+    setCardEmail(ticket?.buyer_email || '');
+    setCardEmailMsg('');
     setWalletData(null);
-  }, [ticket?.id, ticket?.status]);
+  }, [ticket?.id, ticket?.status, ticket?.buyer_email]);
 
   const bgImage = allocation.background_image_url || 'https://images.unsplash.com/photo-1540039155733-d7fbc999e347?auto=format&fit=crop&q=80&w=1000';
   const themeColor = allocation.theme_color || '#1a1a1a';
@@ -111,6 +116,35 @@ const TicketCard = ({ ticket, allocation, onTicketUpdated }) => {
       : qrMode === 'wallet-direct' && walletData
       ? walletData.save_url
       : ticketId;
+
+  const handleSendTicketEmail = async (e) => {
+    e.preventDefault();
+    const targetEmail = cardEmail.trim();
+    if (!targetEmail) return;
+    setSendingCardEmail(true);
+    setCardEmailMsg('Sending...');
+    try {
+      if (isPreviewTicket && allocation?.id) {
+        const saleRes = await axios.post(`/api/allocations/${allocation.id}/digital-sale/`, {
+          amount: 1,
+          email: targetEmail,
+        });
+        const newTicket = saleRes.data.tickets?.[0];
+        if (newTicket && onTicketUpdated) onTicketUpdated(newTicket);
+        setCardEmailMsg(`✓ Sent to ${targetEmail}`);
+      } else {
+        const res = await axios.post(`/api/tickets/${ticketId}/send-email/`, {
+          email: targetEmail,
+        });
+        if (res.data.ticket && onTicketUpdated) onTicketUpdated(res.data.ticket);
+        setCardEmailMsg(`✓ Sent to ${targetEmail}`);
+      }
+    } catch (err) {
+      setCardEmailMsg(err.response?.data?.message || 'Failed to send email');
+    } finally {
+      setSendingCardEmail(false);
+    }
+  };
 
   return (
     <div className="ewallet-pass">
@@ -275,6 +309,49 @@ const TicketCard = ({ ticket, allocation, onTicketUpdated }) => {
       </div>
 
       <div className="ewallet-footer">
+        <form
+          onSubmit={handleSendTicketEmail}
+          style={{ display: 'flex', gap: '6px', marginBottom: '8px', width: '100%' }}
+        >
+          <input
+            type="email"
+            required
+            placeholder="Email to receive this ticket..."
+            value={cardEmail}
+            onChange={(e) => setCardEmail(e.target.value)}
+            style={{
+              flex: 1,
+              padding: '8px 10px',
+              borderRadius: '8px',
+              border: '1px solid rgba(255,255,255,0.2)',
+              background: 'rgba(255,255,255,0.08)',
+              color: '#fff',
+              fontSize: '0.78rem',
+            }}
+          />
+          <button
+            type="submit"
+            disabled={sendingCardEmail}
+            style={{
+              padding: '8px 12px',
+              borderRadius: '8px',
+              border: 'none',
+              background: '#ff2a85',
+              color: '#fff',
+              fontWeight: 700,
+              fontSize: '0.78rem',
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {sendingCardEmail ? 'Sending...' : '✉ Email Pass'}
+          </button>
+        </form>
+        {cardEmailMsg && (
+          <p style={{ fontSize: '0.74rem', color: '#69f0ae', textAlign: 'center', margin: '0 0 8px 0' }}>
+            {cardEmailMsg}
+          </p>
+        )}
         <button className="wallet-btn apple" onClick={() => handleWalletClick('Apple Wallet')}>
           Add to Apple Wallet
         </button>

@@ -10,6 +10,7 @@ const ArtistPage = () => {
   const [loading, setLoading] = useState(true);
   const [purchaseStatus, setPurchaseStatus] = useState('');
   const [buyerEmail, setBuyerEmail] = useState('');
+  const [ticketCount, setTicketCount] = useState(1);
   const [tickets, setTickets] = useState([]);
 
   useEffect(() => {
@@ -27,19 +28,25 @@ const ArtistPage = () => {
     }
   };
 
-  const handleBuyTicket = async () => {
-    setPurchaseStatus('Processing encrypted payment...');
+  const handleBuyTicket = async (e) => {
+    if (e) e.preventDefault();
+    const cleanEmail = buyerEmail.trim();
+    setPurchaseStatus(
+      cleanEmail
+        ? `Creating ticket(s) & sending Google Wallet pass to ${cleanEmail}...`
+        : 'Processing encrypted payment...'
+    );
     try {
-      await new Promise(resolve => setTimeout(resolve, 800));
+      await new Promise(resolve => setTimeout(resolve, 600));
       const response = await axios.post(
         `/api/allocations/${allocation.id}/digital-sale/`,
-        { amount: 1, email: buyerEmail || null }
+        { amount: Number(ticketCount) || 1, email: cleanEmail || null }
       );
       const emailSent = response.data.email_status?.sent;
       setPurchaseStatus(
         emailSent
-          ? `Success! Pass ready & confirmation emailed to ${buyerEmail}.`
-          : 'Success! Your eWallet pass is ready below.'
+          ? `✅ Success! Your ticket pass was emailed to ${cleanEmail} and is ready below.`
+          : '✅ Success! Your eWallet pass is ready below.'
       );
       setTickets(response.data.tickets);
       fetchAllocation();
@@ -61,18 +68,19 @@ const ArtistPage = () => {
       </motion.div>
       
       <div className="landing-content">
-        <motion.div className="ticket-box glass-card" initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ delay: 0.3 }}>
+        <motion.form onSubmit={handleBuyTicket} className="ticket-box glass-card" initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ delay: 0.3 }}>
           <h3>{allocation.custom_message || 'General Admission'}</h3>
           <p className="price-tag">$20.00</p>
-          <div style={{ marginBottom: '12px' }}>
+          <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', marginBottom: '12px', flexWrap: 'wrap' }}>
             <input
               type="email"
-              placeholder="Enter email for ticket receipt (optional)"
+              placeholder="Enter email to receive your ticket..."
               value={buyerEmail}
               onChange={(e) => setBuyerEmail(e.target.value)}
               style={{
-                width: '100%',
-                maxWidth: '300px',
+                flex: 1,
+                minWidth: '220px',
+                maxWidth: '280px',
                 padding: '10px 14px',
                 borderRadius: '8px',
                 border: '1px solid rgba(255,255,255,0.2)',
@@ -81,12 +89,30 @@ const ArtistPage = () => {
                 fontSize: '0.9rem',
               }}
             />
+            <input
+              type="number"
+              min="1"
+              max="10"
+              value={ticketCount}
+              onChange={(e) => setTicketCount(e.target.value)}
+              title="Number of tickets"
+              style={{
+                width: '68px',
+                padding: '10px',
+                borderRadius: '8px',
+                border: '1px solid rgba(255,255,255,0.2)',
+                background: 'rgba(0,0,0,0.4)',
+                color: '#fff',
+                fontSize: '0.9rem',
+                textAlign: 'center',
+              }}
+            />
           </div>
-          <button onClick={handleBuyTicket} className="btn-buy glow-pink">
-            Purchase Digital Ticket
+          <button type="submit" className="btn-buy glow-pink">
+            Purchase &amp; Email Digital Ticket
           </button>
           {purchaseStatus && <p className="status-msg">{purchaseStatus}</p>}
-        </motion.div>
+        </motion.form>
 
         <AnimatePresence>
           {tickets.length > 0 && (

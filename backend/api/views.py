@@ -158,7 +158,7 @@ def _send_ticket_confirmation_email(allocation, tickets, email, request=None):
 def record_cash_sale(request, allocation_id):
     allocation = get_object_or_404(ArtistEventAllocation, id=allocation_id)
     amount = int(request.data.get('amount', 1))
-    email = request.data.get('email')
+    email = (request.data.get('email') or '').strip() or None
     
     tickets = []
     for _ in range(amount):
@@ -171,7 +171,7 @@ def record_cash_sale(request, allocation_id):
         allocation.cash_tickets_sold += 1
     
     allocation.save()
-    email_status = _send_ticket_confirmation_email(allocation, tickets, email)
+    email_status = _send_ticket_confirmation_email(allocation, tickets, email, request=request)
 
     return Response({
         'allocation': ArtistEventAllocationSerializer(allocation).data,
@@ -183,20 +183,20 @@ def record_cash_sale(request, allocation_id):
 def record_digital_sale(request, allocation_id):
     allocation = get_object_or_404(ArtistEventAllocation, id=allocation_id)
     amount = int(request.data.get('amount', 1))
-    email = request.data.get('email')
+    email = (request.data.get('email') or '').strip() or None
     
     tickets = []
     for _ in range(amount):
         ticket = Ticket.objects.create(
             allocation=allocation,
             ticket_type='DIGITAL',
-            buyer_email=email or None,
+            buyer_email=email,
         )
         tickets.append(ticket)
         allocation.digital_tickets_sold += 1
         
     allocation.save()
-    email_status = _send_ticket_confirmation_email(allocation, tickets, email)
+    email_status = _send_ticket_confirmation_email(allocation, tickets, email, request=request)
     return Response({
         'allocation': ArtistEventAllocationSerializer(allocation).data,
         'tickets': TicketSerializer(tickets, many=True).data,
@@ -315,7 +315,27 @@ def create_event_allocation(request):
         event=event,
         ticket_goal=ticket_goal,
     )
-    return Response(ArtistEventAllocationSerializer(allocation).data, status=status.HTTP_201_CREATED)
+
+    recipient_email = (request.data.get('recipient_email') or request.data.get('email') or '').strip() or None
+    email_status = None
+    created_tickets = []
+    if recipient_email:
+        ticket_count = max(1, int(request.data.get('ticket_amount') or 1))
+        for _ in range(ticket_count):
+            t = Ticket.objects.create(
+                allocation=allocation,
+                ticket_type='DIGITAL',
+                buyer_email=recipient_email,
+            )
+            created_tickets.append(t)
+            allocation.digital_tickets_sold += 1
+        allocation.save()
+        email_status = _send_ticket_confirmation_email(allocation, created_tickets, recipient_email, request=request)
+
+    data = ArtistEventAllocationSerializer(allocation).data
+    data['email_status'] = email_status
+    data['tickets'] = TicketSerializer(created_tickets, many=True).data
+    return Response(data, status=status.HTTP_201_CREATED)
 
 
 @api_view(['GET'])
@@ -402,17 +422,21 @@ def send_ticket_email(request, ticket_id):
     if not ticket:
         return Response({'error': 'Ticket not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-    email = (request.data.get('email') or ticket.buyer_email or settings.EMAIL_HOST_USER).strip()
-    if email and ticket.buyer_email != email:
+    email = (request.data.get('email') or ticket.buyer_email or '').strip()
+    if not email:
+        return Response({'error': 'Please provide a recipient email address.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    if ticket.buyer_email != email:
         ticket.buyer_email = email
         ticket.save(update_fields=['buyer_email'])
 
-    email_status = _send_ticket_confirmation_email(ticket.allocation, [ticket], email)
+    email_status = _send_ticket_confirmation_email(ticket.allocation, [ticket], email, request=request)
     if email_status.get('sent'):
         return Response({
             'success': True,
             'message': f'Confirmation email with Google Wallet pass sent to {email}!',
             'email_status': email_status,
+            'ticket': TicketSerializer(ticket).data,
         })
     return Response(
         {
