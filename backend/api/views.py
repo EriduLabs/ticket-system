@@ -65,11 +65,22 @@ def _send_ticket_confirmation_email(allocation, tickets, email, request=None):
     ticket_items_html = []
     for t in tickets:
         short_code = str(t.id)[:8].upper()
-        # Short HTTPS redirect URL that Gmail mobile never truncates, which 302-redirects to pay.google.com/gp/v/save/<jwt>
-        wallet_redirect_url = f"{public_base}/api/tickets/{t.id}/google-wallet/redirect/?allocation_id={allocation.id}"
+        try:
+            pass_data = _build_google_wallet_pass_data(
+                allocation=allocation,
+                resolved_ticket_id=str(t.id),
+                ticket_status='VALID',
+                buyer_email=email,
+                check_remote_api=True,
+            )
+            direct_save_url = pass_data["save_url"]
+        except Exception as exc:
+            print(f"Error building Google Wallet pass for email: {exc}")
+            direct_save_url = f"{public_base}/api/tickets/{t.id}/google-wallet/redirect/?allocation_id={allocation.id}"
+
         wallet_link_html = (
             f'<div style="margin:16px 0;">'
-            f'<a href="{wallet_redirect_url}" target="_blank" '
+            f'<a href="{direct_save_url}" target="_blank" '
             f'style="display:inline-block;background:#1a73e8;color:#ffffff;padding:12px 24px;'
             f'border-radius:24px;text-decoration:none;font-weight:700;font-size:15px;">'
             f'＋ Add Ticket #{short_code} to Google Wallet</a>'
@@ -531,10 +542,9 @@ def _check_or_sync_google_wallet_api(service_account_info, event_ticket_class, e
             method="POST",
         )
         try:
-            urllib.request.urlopen(req, timeout=4).close()
+            urllib.request.urlopen(req, timeout=6).close()
         except urllib.error.HTTPError as e:
             if e.code == 409:
-                # Class already exists, update it
                 put_url = f"{class_url}/{urllib.parse.quote(event_ticket_class['id'], safe='')}"
                 put_req = urllib.request.Request(
                     put_url,
@@ -542,14 +552,15 @@ def _check_or_sync_google_wallet_api(service_account_info, event_ticket_class, e
                     headers=headers,
                     method="PUT",
                 )
-                urllib.request.urlopen(put_req, timeout=4).close()
+                urllib.request.urlopen(put_req, timeout=6).close()
             elif e.code == 403:
                 return (
                     "permission_denied",
                     f"Service account {service_account_info['client_email']} needs to be invited under Users in Google Pay & Wallet Console for Issuer ID {settings.GOOGLE_WALLET_ISSUER_ID}.",
                 )
             else:
-                return ("warning", f"Google Wallet API returned HTTP {e.code}")
+                err_body = e.read().decode("utf-8", errors="ignore")
+                return ("warning", f"Google Wallet API returned HTTP {e.code}: {err_body[:200]}")
 
         obj_url = "https://walletobjects.googleapis.com/walletobjects/v1/eventTicketObject"
         obj_req = urllib.request.Request(
@@ -559,7 +570,7 @@ def _check_or_sync_google_wallet_api(service_account_info, event_ticket_class, e
             method="POST",
         )
         try:
-            urllib.request.urlopen(obj_req, timeout=4).close()
+            urllib.request.urlopen(obj_req, timeout=6).close()
         except urllib.error.HTTPError as e:
             if e.code == 409:
                 put_obj_url = f"{obj_url}/{urllib.parse.quote(event_ticket_object['id'], safe='')}"
@@ -569,7 +580,7 @@ def _check_or_sync_google_wallet_api(service_account_info, event_ticket_class, e
                     headers=headers,
                     method="PUT",
                 )
-                urllib.request.urlopen(put_obj_req, timeout=4).close()
+                urllib.request.urlopen(put_obj_req, timeout=6).close()
 
         return ("synced", "EventTicketClass and EventTicketObject synced with Google Wallet API.")
     except Exception as exc:
@@ -650,27 +661,31 @@ def _build_google_wallet_pass_data(
             "start": allocation.event.date.isoformat(),
         }
 
-    bg_url = allocation.event.background_image_url or ""
-    is_local_bg = any(
-        host_hint in bg_url
-        for host_hint in ("localhost", "127.0.0.1", "192.168.", "10.", "172.")
-    )
-    wallet_hero_uri = (
-        bg_url
-        if (bg_url.startswith("https://") and not is_local_bg)
-        else "https://images.unsplash.com/photo-1540039155733-d7fbc999e347?auto=format&fit=crop&q=80&w=1000"
-    )
-    event_ticket_class["heroImage"] = {
-        "sourceUri": {
-            "uri": wallet_hero_uri,
-        },
-        "contentDescription": {
-            "defaultValue": {
-                "language": "en-US",
-                "value": allocation.event.title,
-            }
-        },
-    }
+    public_base = _get_public_base_url()
+    bg_url = (allocation.event.background_image_url or "").strip()
+    wallet_hero_uri = None
+    if bg_url.startswith("/media/") and public_base.startswith("https://"):
+        wallet_hero_uri = f"{public_base}{bg_url}"
+    elif "localhost:8000/media/" in bg_url and public_base.startswith("https://"):
+        media_part = bg_url.split("localhost:8000", 1)[1]
+        wallet_hero_uri = f"{public_base}{media_part}"
+    elif bg_url.startswith("https://") and not any(
+        h in bg_url for h in ("localhost", "127.0.0.1", "192.168.", "10.", "172.", "images.unsplash.com")
+    ):
+        wallet_hero_uri = bg_url
+
+    if wallet_hero_uri:
+        event_ticket_class["heroImage"] = {
+            "sourceUri": {
+                "uri": wallet_hero_uri,
+            },
+            "contentDescription": {
+                "defaultValue": {
+                    "language": "en-US",
+                    "value": allocation.event.title,
+                }
+            },
+        }
 
     state_map = {
         "VALID": "ACTIVE",
@@ -744,7 +759,7 @@ def _build_google_wallet_pass_data(
         "aud": "google",
         "typ": "savetowallet",
         "iat": int(time.time()),
-        "origins": origins,
+        "origins": [],
         "payload": payload,
     }
 
@@ -810,6 +825,6 @@ def redirect_google_wallet_pass(request, ticket_id):
         ticket_status=ticket_status,
         buyer_email=buyer_email,
         request_origin=request.META.get("HTTP_ORIGIN"),
-        check_remote_api=False,
+        check_remote_api=True,
     )
     return HttpResponseRedirect(pass_data["save_url"])
